@@ -1,0 +1,385 @@
+%% Read CSV file (adjust filename)
+data_WOOD = readtable('WOOD.xls');
+data_CI = readtable('CI.xls');
+
+%% WOOD DEFINE DATA
+% Assuming columns: Time (s), Acceleration (m/s^2)
+t_w = data_WOOD.Time_s;              % time vector
+x_w = data_WOOD.Acceleration_x_;      % vibration signal
+y_w = data_WOOD.Acceleration_y_;
+z_w = data_WOOD.Acceleration_z_;
+
+dt_w = mean(diff(t_w));   % average time step
+Fs_w = 1/dt_w;            % sampling frequency
+
+%% CAST IRON DEFINE DATA
+t_ci = data_CI.Time_s;              % time vector
+x_ci = data_CI.Acceleration_x_;      % vibration signal
+y_ci = data_CI.Acceleration_y_;
+z_ci = data_CI.Acceleration_z_;
+
+dt_ci = mean(diff(t_ci));   % average time step
+Fs_ci = 1/dt_ci;           % FIXED: was dt_w, should be dt_ci
+
+%% FUNCTION DEFINITIONS
+
+% RMS, PEAK, PEAK-PEAK, MEAN
+    function stats = basic_time_stats(a) 
+        stats.mean_val = mean(a);
+        stats.rms_val  = rms(a);
+        stats.peak_val = max(abs(a));
+        stats.ptp_val  = max(a) - min(a);  % peak-to-peak
+    end
+
+% Statistical Features
+    function stats = statistical_features(a) 
+        stats.std_val   = std(a);
+        stats.skew_val  = skewness(a);
+        stats.kurt_val  = kurtosis(a);
+    end
+
+% Crest Factor
+    function stats = full_time_stats(a) 
+        stats.rms_val  = rms(a);
+        stats.peak_val = max(abs(a));
+        stats.crest_factor = stats.peak_val / stats.rms_val;
+    end
+
+% Envelope Spectrum
+    function [f_env, EnvSpec, env_sig] = envelope_spectrum(x, Fs, fBand)
+        x_filt = bandpass(x, fBand, Fs);
+        analytic_sig = hilbert(x_filt);
+        env_sig = abs(analytic_sig);
+        
+        N  = length(env_sig);
+        Y  = fft(env_sig);
+        P2 = abs(Y/N);
+        P1 = P2(1:floor(N/2)+1);
+        P1(2:end-1) = 2*P1(2:end-1);
+        
+        f_env  = Fs*(0:floor(N/2))/N;
+        EnvSpec = P1;
+    end
+
+% FFT ANALYSIS
+    function [f, A] = single_sided_fft(signal, Fs)
+        N = length(signal);
+        X = fft(signal);
+        P2 = abs(X / N);
+        A = P2(1 : floor(N/2) + 1);
+        A(2:end-1) = 2 * A(2:end-1);
+        f = Fs * (0 : floor(N/2)) / N;
+    end
+
+%Spectrogram
+    function [S, F, T] = compute_spectrogram(x, Fs)
+        % x  : acceleration signal
+        % Fs : sampling frequency
+        % S  : spectrogram matrix (power/frequency)
+        % F  : frequency vector
+        % T  : time vector
+        
+        window   = 1024;
+        noverlap = 512;
+        nfft     = 2048;
+        
+        [S, F, T] = spectrogram(x, window, noverlap, nfft, Fs);
+    end
+
+%% DATA EXTRACTION OF CAST IRON
+
+% FFT ANALYSIS - FIXED: Return amplitude, not Fs
+[fx_ci, Ax_ci] = single_sided_fft(x_ci, Fs_ci);
+[fy_ci, Ay_ci] = single_sided_fft(y_ci, Fs_ci);
+[fz_ci, Az_ci] = single_sided_fft(z_ci, Fs_ci);
+
+% RMS, PEAK, PEAK-PEAK, MEAN
+ci.X = basic_time_stats(x_ci);
+ci.Y = basic_time_stats(y_ci);
+ci.Z = basic_time_stats(z_ci);
+
+% Statistical Analysis
+ci_stats_X = statistical_features(x_ci);
+ci_stats_Y = statistical_features(y_ci);
+ci_stats_Z = statistical_features(z_ci);
+
+% Crest Factor - combines with previous stats
+ci_crest_X = full_time_stats(x_ci);
+ci_crest_Y = full_time_stats(y_ci);
+ci_crest_Z = full_time_stats(z_ci);
+
+% Envelope Spectrum
+fBand = [1 300];
+[f_env_ciX, EnvSpec_ciX, env_ciX] = envelope_spectrum(x_ci, Fs_ci, fBand);
+[f_env_ciY, EnvSpec_ciY, env_ciY] = envelope_spectrum(y_ci, Fs_ci, fBand);
+[f_env_ciZ, EnvSpec_ciZ, env_ciZ] = envelope_spectrum(z_ci, Fs_ci, fBand);
+
+%Spectrogram
+[S_cix, F_cix, T_cix] = compute_spectrogram(x_ci, Fs_ci);
+[S_ciy, F_ciy, T_ciy] = compute_spectrogram(y_ci, Fs_ci);
+[S_ciz, F_ciz, T_ciz] = compute_spectrogram(z_ci, Fs_ci);
+
+%% DATA EXTRACTION OF WOOD
+
+% FFT ANALYSIS - FIXED: Return amplitude, not Fs
+[fx_w, Ax_w] = single_sided_fft(x_w, Fs_w);
+[fy_w, Ay_w] = single_sided_fft(y_w, Fs_w);
+[fz_w, Az_w] = single_sided_fft(z_w, Fs_w);
+
+% RMS, PEAK, PEAK-PEAK, MEAN
+w.X = basic_time_stats(x_w);
+w.Y = basic_time_stats(y_w);
+w.Z = basic_time_stats(z_w);
+
+% Statistical Analysis
+wood_stats_X = statistical_features(x_w);
+wood_stats_Y = statistical_features(y_w);
+wood_stats_Z = statistical_features(z_w);
+
+% Crest Factor
+w_crest_X = full_time_stats(x_w);
+w_crest_Y = full_time_stats(y_w);
+w_crest_Z = full_time_stats(z_w);
+
+% Envelope Spectrum
+[f_env_wX, EnvSpec_wX, env_wX] = envelope_spectrum(x_w, Fs_w, fBand);
+[f_env_wY, EnvSpec_wY, env_wY] = envelope_spectrum(y_w, Fs_w, fBand);
+[f_env_wZ, EnvSpec_wZ, env_wZ] = envelope_spectrum(z_w, Fs_w, fBand);
+
+%Spectrogram
+[S_wx, F_wx, T_wx] = compute_spectrogram(x_w, Fs_w);
+[S_wy, F_wy, T_wy] = compute_spectrogram(y_w, Fs_w);
+[S_wz, F_wz, T_wz] = compute_spectrogram(z_w, Fs_w);
+
+%% Graph Plotting
+
+% FFT ANALYSIS WOOD
+    figure('Name', 'FFT Analysis - Wood', 'NumberTitle', 'off');
+    
+    subplot(3,2,1);
+    plot(t_w, x_w, 'b-')
+    xlabel('Time (s)')
+    ylabel('Acceleration (m/s^2)')
+    title('Time-Domain - X axis')
+    grid on
+    
+    subplot(3,2,2);
+    plot(fx_w, Ax_w, 'r')  % FIXED: Plot amplitude, not Fs
+    xlabel('Frequency (Hz)')
+    ylabel('|Amplitude|')
+    title('Frequency-Domain - X axis')
+    grid on
+    
+    subplot(3,2,3);
+    plot(t_w, y_w, 'b-')
+    xlabel('Time (s)')
+    ylabel('Acceleration (m/s^2)')
+    title('Time-Domain - Y axis')
+    grid on
+    
+    subplot(3,2,4);
+    plot(fy_w, Ay_w, 'g')  % FIXED
+    xlabel('Frequency (Hz)')
+    ylabel('|Amplitude|')
+    title('Frequency-Domain - Y axis')
+    grid on
+    
+    subplot(3,2,5);
+    plot(t_w, z_w, 'b-')
+    xlabel('Time (s)')
+    ylabel('Acceleration (m/s^2)')
+    title('Time-Domain - Z axis')
+    grid on
+    
+    subplot(3,2,6);
+    plot(fz_w, Az_w, 'b')  % FIXED
+    xlabel('Frequency (Hz)')
+    ylabel('|Amplitude|')
+    title('Frequency-Domain - Z axis')
+    grid on
+
+% FFT ANALYSIS Cast Iron
+    figure('Name', 'FFT Analysis - Cast Iron', 'NumberTitle', 'off');
+    
+    subplot(3,2,1);
+    plot(t_ci, x_ci, 'b-')
+    xlabel('Time (s)')
+    ylabel('Acceleration (m/s^2)')
+    title('Time-Domain - X axis')
+    grid on
+    
+    subplot(3,2,2);
+    plot(fx_ci, Ax_ci, 'r')  % FIXED
+    xlabel('Frequency (Hz)')
+    ylabel('|Amplitude|')
+    title('Frequency-Domain - X axis')
+    grid on
+    
+    subplot(3,2,3);
+    plot(t_ci, y_ci, 'b-')
+    xlabel('Time (s)')
+    ylabel('Acceleration (m/s^2)')
+    title('Time-Domain - Y axis')
+    grid on
+    
+    subplot(3,2,4);
+    plot(fy_ci, Ay_ci, 'g')  % FIXED
+    xlabel('Frequency (Hz)')
+    ylabel('|Amplitude|')
+    title('Frequency-Domain - Y axis')
+    grid on
+    
+    subplot(3,2,5);
+    plot(t_ci, z_ci, 'b-')
+    xlabel('Time (s)')
+    ylabel('Acceleration (m/s^2)')
+    title('Time-Domain - Z axis')
+    grid on
+    
+    subplot(3,2,6);
+    plot(fz_ci, Az_ci, 'b')  % FIXED
+    xlabel('Frequency (Hz)')
+    ylabel('|Amplitude|')
+    title('Frequency-Domain - Z axis')
+    grid on
+
+% RMS, Peak, Peak-to-Peak, Mean
+    metrics = {'Mean', 'RMS', 'Peak', 'Peak-to-Peak'};  % ADDED
+    
+    combined = [
+        w.X.mean_val      ci.X.mean_val      w.Y.mean_val      ci.Y.mean_val      w.Z.mean_val      ci.Z.mean_val;
+        w.X.rms_val       ci.X.rms_val       w.Y.rms_val       ci.Y.rms_val       w.Z.rms_val       ci.Z.rms_val;
+        w.X.peak_val      ci.X.peak_val      w.Y.peak_val      ci.Y.peak_val      w.Z.peak_val      ci.Z.peak_val;
+        w.X.ptp_val       ci.X.ptp_val       w.Y.ptp_val       ci.Y.ptp_val       w.Z.ptp_val       ci.Z.ptp_val
+    ];  % FIXED: Use lowercase field names
+    
+    figure('Name', 'Time-Domain Statistics', 'NumberTitle', 'off');
+    bar(combined, 'grouped');
+    set(gca, 'XTickLabel', metrics);
+    ylabel('Value');
+    title('Time-Domain Statistics – Wood vs Cast Iron (X, Y, Z)');
+    legend({
+        'X-Wood', 'X-Cast Iron', ...
+        'Y-Wood', 'Y-Cast Iron', ...
+        'Z-Wood', 'Z-Cast Iron'
+    }, 'Location', 'northoutside', 'Orientation', 'horizontal', 'NumColumns', 3);
+    grid on;
+
+% Statistical Features
+    stats_labels = {'Std Dev', 'Skewness', 'Kurtosis'};  % ADDED
+    
+    combined_stats = [
+        wood_stats_X.std_val   ci_stats_X.std_val   wood_stats_Y.std_val   ci_stats_Y.std_val   wood_stats_Z.std_val   ci_stats_Z.std_val;
+        wood_stats_X.skew_val  ci_stats_X.skew_val  wood_stats_Y.skew_val  ci_stats_Y.skew_val  wood_stats_Z.skew_val  ci_stats_Z.skew_val;
+        wood_stats_X.kurt_val  ci_stats_X.kurt_val  wood_stats_Y.kurt_val  ci_stats_Y.kurt_val  wood_stats_Z.kurt_val  ci_stats_Z.kurt_val
+    ];
+    
+    figure('Name', 'Statistical Features Comparison', 'NumberTitle', 'off');
+    bar(combined_stats, 'grouped');
+    set(gca, 'XTickLabel', stats_labels);
+    ylabel('Value');
+    title('Statistical Features – Wood vs Cast Iron (X, Y, Z)');
+    legend({
+        'X-Wood', 'X-Cast Iron', ...
+        'Y-Wood', 'Y-Cast Iron', ...
+        'Z-Wood', 'Z-Cast Iron'
+    }, 'Location', 'northoutside', 'Orientation', 'horizontal', 'NumColumns', 3);
+    grid on;
+
+% Crest Factor
+    crest_w  = [w_crest_X.crest_factor, w_crest_Y.crest_factor, w_crest_Z.crest_factor];
+    crest_ci = [ci_crest_X.crest_factor, ci_crest_Y.crest_factor, ci_crest_Z.crest_factor];
+    
+    axes_list = {'X', 'Y', 'Z'};
+    
+    figure('Name', 'Crest Factor Comparison', 'NumberTitle', 'off');
+    plot(crest_w, '-o', 'LineWidth', 1.8, 'MarkerSize', 7); hold on;
+    plot(crest_ci, '-s', 'LineWidth', 1.8, 'MarkerSize', 7);
+    
+    xlim([0.5 3.5]);
+    xticks(1:3);
+    xticklabels(axes_list);
+    
+    ylabel('Crest Factor');
+    title('Crest Factor Comparison – Wood vs Cast Iron');
+    legend('Wood', 'Cast Iron', 'Location', 'best');
+    grid on;
+
+% Envelope Spectrum
+    figure('Name', 'Envelope Spectrum Analysis', 'NumberTitle', 'off');
+    
+    subplot(3,1,1);
+    plot(f_env_ciX, EnvSpec_ciX, 'LineWidth', 1.5); hold on;
+    plot(f_env_wX, EnvSpec_wX, 'LineWidth', 1.5);
+    grid on;
+    xlabel('Frequency (Hz)');
+    ylabel('Amplitude');
+    title(sprintf('Envelope Spectrum - X axis (%.0f–%.0f Hz)', fBand(1), fBand(2)));
+    legend('Cast Iron', 'Wood', 'Location', 'best');
+    
+    subplot(3,1,2);
+    plot(f_env_ciY, EnvSpec_ciY, 'LineWidth', 1.5); hold on;
+    plot(f_env_wY, EnvSpec_wY, 'LineWidth', 1.5);
+    grid on;
+    xlabel('Frequency (Hz)');
+    ylabel('Amplitude');
+    title(sprintf('Envelope Spectrum - Y axis (%.0f–%.0f Hz)', fBand(1), fBand(2)));
+    legend('Cast Iron', 'Wood', 'Location', 'best');
+    
+    subplot(3,1,3);
+    plot(f_env_ciZ, EnvSpec_ciZ, 'LineWidth', 1.5); hold on;
+    plot(f_env_wZ, EnvSpec_wZ, 'LineWidth', 1.5);
+    grid on;
+    xlabel('Frequency (Hz)');
+    ylabel('Amplitude');
+    title(sprintf('Envelope Spectrum - Z axis (%.0f–%.0f Hz)', fBand(1), fBand(2)));
+    legend('Cast Iron', 'Wood', 'Location', 'best');
+
+%Spectrogram
+    figure('Name','Spectrograms - Wood vs Cast Iron','NumberTitle','off');
+    
+    % --- Row 1: X axis ---
+    subplot(3,2,1);
+    imagesc(T_wx, F_wx, 20*log10(abs(S_wx)));
+    axis xy;
+    xlabel('Time (s)'); ylabel('Frequency (Hz)');
+    title('Wood - X axis');
+    colorbar;
+    
+    subplot(3,2,2);
+    imagesc(T_cix, F_cix, 20*log10(abs(S_cix)));
+    axis xy;
+    xlabel('Time (s)'); ylabel('Frequency (Hz)');
+    title('Cast Iron - X axis');
+    colorbar;
+    
+    % --- Row 2: Y axis ---
+    subplot(3,2,3);
+    imagesc(T_wy, F_wy, 20*log10(abs(S_wy)));
+    axis xy;
+    xlabel('Time (s)'); ylabel('Frequency (Hz)');
+    title('Wood - Y axis');
+    colorbar;
+    
+    subplot(3,2,4);
+    imagesc(T_ciy, F_ciy, 20*log10(abs(S_ciy)));
+    axis xy;
+    xlabel('Time (s)'); ylabel('Frequency (Hz)');
+    title('Cast Iron - Y axis');
+    colorbar;
+    
+    % --- Row 3: Z axis ---
+    subplot(3,2,5);
+    imagesc(T_wz, F_wz, 20*log10(abs(S_wz)));
+    axis xy;
+    xlabel('Time (s)'); ylabel('Frequency (Hz)');
+    title('Wood - Z axis');
+    colorbar;
+    
+    subplot(3,2,6);
+    imagesc(T_ciz, F_ciz, 20*log10(abs(S_ciz)));
+    axis xy;
+    xlabel('Time (s)'); ylabel('Frequency (Hz)');
+    title('Cast Iron - Z axis');
+    colorbar;
+
